@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Faculty Dashboard - Skill Gap Analysis</title>
+    <link rel="stylesheet" href="faculty-dashboard.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+
+<body>
+    <div class="navbar">
+        <h2>📊 Faculty Dashboard</h2>
+        <div class="nav-right">
+            <span>Welcome, <strong id="facultyName">Faculty</strong></span>
+            <button class="btn-logout" onclick="logout()">Logout</button>
+        </div>
+    </div>
+
+    <div class="dashboard-page" id="dashboardPage">
+        <div class="loading" id="loadingSpinner">
+            <div class="spinner"></div>
+            <p>Loading dashboard data...</p>
+        </div>
+    </div>
+
+    <script>
+        let dashboardData = null;
+
+        async function loadDashboard() {
+            try {
+                const response = await fetch('faculty-dashboard?type=json');
+                if (!response.ok) {
+                    if (response.status === 401) { window.location.href = 'login'; return; }
+                    throw new Error('Failed to load data');
+                }
+                dashboardData = await response.json();
+                renderDashboard();
+            } catch (error) {
+                console.error('Error:', error);
+                document.getElementById('dashboardPage').innerHTML =
+                    '<div class="chart-card" style="text-align:center;padding:40px;"><h3>⚠️ Error Loading Dashboard</h3><p>' + error.message + '</p></div>';
+            }
+        }
+
+        function renderDashboard() {
+            const d = dashboardData;
+            const s = d.summary;
+            document.getElementById('facultyName').textContent = d.facultyName;
+
+            let html = `
+                <div class="summary-cards">
+                    <div class="summary-card students">
+                        <div class="card-icon">👥</div>
+                        <div class="card-value">${s.totalStudents}</div>
+                        <div class="card-label">Total Students Assessed</div>
+                    </div>
+                    <div class="summary-card average">
+                        <div class="card-icon">📈</div>
+                        <div class="card-value">${s.averageScore}%</div>
+                        <div class="card-label">Average Score</div>
+                    </div>
+                    <div class="summary-card excellent">
+                        <div class="card-icon">🏆</div>
+                        <div class="card-value">${s.excellentCount}</div>
+                        <div class="card-label">Excellent Level</div>
+                    </div>
+                    <div class="summary-card lower">
+                        <div class="card-icon">📘</div>
+                        <div class="card-value">${s.lowerCount}</div>
+                        <div class="card-label">Lower Level</div>
+                    </div>
+                </div>
+
+                <div class="charts-grid">
+                    <div class="chart-card">
+                        <h3>📊 Student Score Distribution</h3>
+                        <canvas id="barChart" height="280"></canvas>
+                    </div>
+                    <div class="chart-card">
+                        <h3>🎯 Level Distribution</h3>
+                        <canvas id="doughnutChart" height="280"></canvas>
+                    </div>
+                </div>
+
+                <div class="students-section">
+                    <div class="section-header">
+                        <h3>📋 Student Details</h3>
+                        <input type="text" class="search-box" placeholder="🔍 Search by student name..." oninput="filterStudents(this.value)">
+                    </div>
+                    <table class="students-table">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Student Name</th>
+                                <th>Skill</th>
+                                <th>Score</th>
+                                <th>Percentage</th>
+                                <th>Level</th>
+                                <th>Details</th>
+                            </tr>
+                        </thead>
+                        <tbody id="studentsBody">
+                            ${d.students.map((st, i) => renderStudentRow(st, i)).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+
+            document.getElementById('dashboardPage').innerHTML = html;
+            renderCharts();
+        }
+
+        function renderStudentRow(st, idx) {
+            const levelClass = st.level === 'Excellent' ? 'excellent' : st.level === 'Intermediate' ? 'intermediate' : 'lower';
+            return `
+                <tr class="student-row" data-name="${st.fullName.toLowerCase()}">
+                    <td>${idx + 1}</td>
+                    <td><strong>${st.fullName}</strong><br><small style="color:#888;">${st.username}</small></td>
+                    <td>${st.skillName}</td>
+                    <td>${st.correctCount} / ${st.totalCount}</td>
+                    <td>
+                        <div style="display:flex;align-items:center;gap:8px;">
+                            <div class="score-bar-bg" style="width:100px;">
+                                <div class="score-bar-fill ${levelClass}" style="width:${st.percentage}%"></div>
+                            </div>
+                            <span style="font-weight:700;font-size:13px;">${st.percentage}%</span>
+                        </div>
+                    </td>
+                    <td><span class="level-pill ${levelClass}">${st.level}</span></td>
+                    <td><button class="expand-btn" onclick="toggleDetail(${st.userId}, ${st.skillId || 3}, this)">View ▼</button></td>
+                </tr>
+                <tr class="detail-row" id="detail-${st.userId}">
+                    <td colspan="7">
+                        <div class="detail-content" id="detail-content-${st.userId}">
+                            <p style="color:#888;">Loading answers...</p>
+                        </div>
+                    </td>
+                </tr>
+            `;
+        }
+
+        async function toggleDetail(userId, skillId, btn) {
+            const row = document.getElementById('detail-' + userId);
+            if (row.classList.contains('open')) {
+                row.classList.remove('open');
+                btn.textContent = 'View ▼';
+                return;
+            }
+            row.classList.add('open');
+            btn.textContent = 'Hide ▲';
+
+            // Fetch per-question answers for this student
+            try {
+                const response = await fetch('api/faculty-student-answers?userId=' + userId + '&skillId=' + skillId);
+                if (!response.ok) throw new Error('Failed');
+                const answers = await response.json();
+                const container = document.getElementById('detail-content-' + userId);
+
+                if (answers.length === 0) {
+                    container.innerHTML = '<p>No detailed answers available.</p>';
+                    return;
+                }
+
+                let html = '<div class="answer-grid">';
+                answers.forEach(a => {
+                    const cls = a.selectedOption === '' || a.selectedOption === null ? 'skipped' : a.isCorrect ? 'correct' : 'wrong';
+                    const tip = `Q${a.number}: ${cls === 'correct' ? '✅' : cls === 'wrong' ? '❌ (Ans: ' + a.correctOption + ')' : 'Skipped'}`;
+                    html += `<div class="answer-dot ${cls}" title="${tip}">Q${a.number}</div>`;
+                });
+                html += '</div>';
+                html += `<p style="margin-top:12px;font-size:12px;color:#888;">
+                    <span style="color:#00b09b;">■</span> Correct &nbsp;
+                    <span style="color:#e44d26;">■</span> Wrong &nbsp;
+                    <span style="color:#ccc;">■</span> Skipped
+                </p>`;
+                container.innerHTML = html;
+            } catch (e) {
+                document.getElementById('detail-content-' + userId).innerHTML = '<p style="color:#e44d26;">Error loading answers</p>';
+            }
+        }
+
+        function renderCharts() {
+            const d = dashboardData;
+            const s = d.summary;
+
+            // Bar Chart - Student Scores
+            const barCtx = document.getElementById('barChart').getContext('2d');
+            const labels = d.students.map(st => st.fullName.split(' ').slice(0, 2).join(' '));
+            const scores = d.students.map(st => st.percentage);
+            const barColors = scores.map(s => s >= 71 ? '#00b09b' : s >= 31 ? '#f7971e' : '#e44d26');
+
+            new Chart(barCtx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Score %',
+                        data: scores,
+                        backgroundColor: barColors,
+                        borderRadius: 6,
+                        borderSkipped: false,
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: { display: false },
+                    },
+                    scales: {
+                        y: { beginAtZero: true, max: 100, ticks: { callback: v => v + '%' } },
+                        x: { ticks: { maxRotation: 45, minRotation: 45, font: { size: 10 } } }
+                    }
+                }
+            });
+
+            // Doughnut Chart - Level Distribution
+            const doughnutCtx = document.getElementById('doughnutChart').getContext('2d');
+            new Chart(doughnutCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Excellent', 'Intermediate', 'Lower'],
+                    datasets: [{
+                        data: [s.excellentCount, s.intermediateCount, s.lowerCount],
+                        backgroundColor: ['#00b09b', '#f7971e', '#e44d26'],
+                        borderWidth: 3,
+                        borderColor: '#fff',
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    cutout: '60%',
+                    plugins: {
+                        legend: { position: 'bottom', labels: { padding: 15, font: { size: 13 } } }
+                    }
+                }
+            });
+        }
+
+        function filterStudents(query) {
+            query = query.toLowerCase();
+            document.querySelectorAll('.student-row').forEach(row => {
+                const name = row.getAttribute('data-name');
+                row.style.display = name.includes(query) ? '' : 'none';
+            });
+        }
+
+        function logout() {
+            fetch('logout', { method: 'POST' }).then(() => window.location.href = 'login');
+        }
+
+        window.addEventListener('load', loadDashboard);
+    </script>
+</body>
+
+</html>

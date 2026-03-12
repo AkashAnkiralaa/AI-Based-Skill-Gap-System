@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Exam Results - Skill Gap Analysis</title>
+    <link rel="stylesheet" href="exam-results.css">
+</head>
+
+<body>
+    <div class="results-page" id="resultsPage">
+        <div class="loading-spinner" id="loadingSpinner">
+            <div class="spinner"></div>
+            <p>Loading your results...</p>
+        </div>
+    </div>
+
+    <script>
+        async function loadResults() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const skillId = urlParams.get('skillId') || 3;
+
+            try {
+                const response = await fetch('api/exam-results?skillId=' + skillId);
+                if (!response.ok) {
+                    if (response.status === 401) { window.location.href = 'login'; return; }
+                    throw new Error('Failed to load results');
+                }
+                const data = await response.json();
+                renderResults(data);
+            } catch (error) {
+                console.error('Error:', error);
+                document.getElementById('resultsPage').innerHTML =
+                    '<div class="score-card"><h1>⚠️ Error Loading Results</h1><p>' + error.message + '</p><br><a href="dashboard" class="action-btn primary">Back to Dashboard</a></div>';
+            }
+        }
+
+        function renderResults(data) {
+            const levelClass = data.level === 'Excellent' ? 'excellent' : data.level === 'Intermediate' ? 'intermediate' : 'lower';
+            const levelEmoji = data.level === 'Excellent' ? '🏆' : data.level === 'Intermediate' ? '📊' : '📘';
+            const wrongCount = data.total - data.score;
+
+            // Determine which topics had wrong answers
+            const wrongTopics = new Set();
+            data.questions.forEach(q => {
+                if (!q.isCorrect) {
+                    const text = q.text.toLowerCase();
+                    if (text.includes('html') || text.includes('heading') || text.includes('hyperlink') || text.includes('tag'))
+                        wrongTopics.add('HTML');
+                    if (text.includes('css') || text.includes('style') || text.includes('color') || text.includes('font') ||
+                        text.includes('background') || text.includes('position') || text.includes('underline') || text.includes('capitalize'))
+                        wrongTopics.add('CSS');
+                    if (text.includes('javascript') || text.includes('function') || text.includes('variable') || text.includes('alert') ||
+                        text.includes('loop') || text.includes('boolean') || text.includes('operator') || text.includes('event') ||
+                        text.includes('array') || text.includes('if statement'))
+                        wrongTopics.add('JavaScript');
+                    if (text.includes('dom') || text.includes('document.get') || text.includes('innerhtml'))
+                        wrongTopics.add('DOM');
+                    if (wrongTopics.size === 0) wrongTopics.add('General');
+                }
+            });
+
+            let html = `
+                <div class="score-card">
+                    <h1>📝 Exam Results</h1>
+                    <p class="candidate-label">Candidate: <strong>${data.candidateName}</strong></p>
+
+                    <div class="score-circle level-${levelClass}">
+                        ${data.percentage}%
+                        <span>Score</span>
+                    </div>
+
+                    <div class="level-badge ${levelClass}">${levelEmoji} ${data.level} Level</div>
+
+                    <div class="stats-row">
+                        <div class="stat-item">
+                            <div class="stat-value">${data.total}</div>
+                            <div class="stat-label">Total Questions</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-value correct">${data.score}</div>
+                            <div class="stat-label">Correct ✅</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-value wrong">${wrongCount}</div>
+                            <div class="stat-label">Wrong ❌</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="tabs">
+                    <button class="tab-btn active" onclick="switchTab('answers')">📋 Answer Review</button>
+                    <button class="tab-btn" onclick="switchTab('resources')">📚 Learning Resources</button>
+                </div>
+
+                <div class="tab-content active" id="tab-answers">
+                    ${data.questions.map(q => {
+                const status = q.selectedOption === '' ? 'not-answered' : q.isCorrect ? 'correct-answer' : 'wrong-answer';
+                const badge = q.selectedOption === '' ? '<span class="q-badge skipped">Skipped</span>' :
+                    q.isCorrect ? '<span class="q-badge correct">✅ Correct</span>' :
+                        '<span class="q-badge wrong">❌ Wrong</span>';
+                return `
+                            <div class="question-review ${status}">
+                                <div class="q-header">
+                                    <span class="q-number">Question ${q.number}</span>
+                                    ${badge}
+                                </div>
+                                <div class="q-text">${q.text}</div>
+                                <div class="options-grid">
+                                    ${renderOption('A', q.optionA, q.correctOption, q.selectedOption)}
+                                    ${renderOption('B', q.optionB, q.correctOption, q.selectedOption)}
+                                    ${renderOption('C', q.optionC, q.correctOption, q.selectedOption)}
+                                    ${renderOption('D', q.optionD, q.correctOption, q.selectedOption)}
+                                </div>
+                            </div>
+                        `;
+            }).join('')}
+                </div>
+
+                <div class="tab-content" id="tab-resources">
+                    <h2 style="margin-bottom:20px;color:#1a1a2e;">📚 Recommended Learning Resources</h2>
+                    ${wrongCount === 0 ? '<p style="color:#00b09b;font-size:18px;text-align:center;padding:30px;">🎉 Perfect Score! No additional resources needed. You are excellent!</p>' :
+                    renderResources(data.resources, wrongTopics)}
+                </div>
+
+                <div class="action-row">
+                    <a href="dashboard" class="action-btn primary">🏠 Back to Dashboard</a>
+                </div>
+                <p style="text-align:center;color:#888;font-size:13px;margin-top:10px;">
+                    ℹ️ Each exam can only be attempted once. Your results are final.
+                </p>
+            `;
+
+            document.getElementById('resultsPage').innerHTML = html;
+        }
+
+        function renderOption(letter, text, correct, selected) {
+            let cls = '';
+            let icon = '';
+            if (letter === correct && letter === selected) {
+                cls = 'correct-option'; icon = '<span class="icon">✅</span>';
+            } else if (letter === correct) {
+                cls = 'correct-option'; icon = '<span class="icon">✅</span>';
+            } else if (letter === selected) {
+                cls = 'wrong-selected'; icon = '<span class="icon">❌</span>';
+            }
+            return `<div class="option-item ${cls}">${icon} <strong>${letter})</strong> ${text}</div>`;
+        }
+
+        function renderResources(resources, wrongTopics) {
+            if (!resources || resources.length === 0)
+                return '<p>No specific resources available.</p>';
+
+            // Group by topic
+            const grouped = {};
+            resources.forEach(r => {
+                // Show resources that match wrong topics, or "General"
+                if (wrongTopics.has(r.topic) || r.topic === 'General') {
+                    if (!grouped[r.topic]) grouped[r.topic] = [];
+                    grouped[r.topic].push(r);
+                }
+            });
+
+            // If no specific topic matches, show all
+            if (Object.keys(grouped).length === 0) {
+                resources.forEach(r => {
+                    if (!grouped[r.topic]) grouped[r.topic] = [];
+                    grouped[r.topic].push(r);
+                });
+            }
+
+            const topicIcons = { 'HTML': '🌐', 'CSS': '🎨', 'JavaScript': '⚡', 'DOM': '🔗', 'General': '📖', 'OOP': '🧱', 'Java': '☕' };
+
+            return Object.entries(grouped).map(([topic, links]) => `
+                <div class="resource-topic">
+                    <h3>${topicIcons[topic] || '📌'} ${topic}</h3>
+                    ${links.map(l => `
+                        <a href="${l.url}" target="_blank" class="resource-link">
+                            <span class="r-icon">🔗</span>
+                            <span class="r-title">${l.title}</span>
+                            <span class="r-type">${l.type}</span>
+                        </a>
+                    `).join('')}
+                </div>
+            `).join('');
+        }
+
+        function switchTab(tab) {
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            document.getElementById('tab-' + tab).classList.add('active');
+            event.target.classList.add('active');
+        }
+
+        window.addEventListener('load', loadResults);
+    </script>
+</body>
+
+</html>

@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Online Exam - Skill Assessment</title>
+    <link rel="stylesheet" href="exam.css">
+</head>
+
+<body>
+    <!-- Exam Instructions Overlay -->
+    <div class="instructions-overlay" id="instructionsOverlay">
+        <div class="instructions-card">
+            <div class="instructions-header">
+                <h1>📝 Online Examination</h1>
+                <p>Skill Assessment Test</p>
+            </div>
+            <div class="instructions-body">
+                <h2>Welcome, <span id="instrCandidateName">Candidate</span>!</h2>
+                <h3>Exam Pattern & Instructions</h3>
+                <div class="exam-info-grid">
+                    <div class="info-item">
+                        <span class="info-icon">📋</span>
+                        <span class="info-label">Total Questions</span>
+                        <span class="info-value" id="instrNumQuestions">30</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-icon">⏱️</span>
+                        <span class="info-label">Total Duration</span>
+                        <span class="info-value" id="instrTotalTime">5 Minutes</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-icon">⏰</span>
+                        <span class="info-label">Time Per Question</span>
+                        <span class="info-value" id="instrQuestionTime">10 Seconds</span>
+                    </div>
+                    <div class="info-item">
+                        <span class="info-icon">🏆</span>
+                        <span class="info-label">Question Type</span>
+                        <span class="info-value">MCQ (A/B/C/D)</span>
+                    </div>
+                </div>
+
+                <div class="rules-section">
+                    <h3>📌 Important Rules</h3>
+                    <ul>
+                        <li>Each question has <strong>4 options</strong> (A, B, C, D). Only one is correct.</li>
+                        <li>You have a <strong>per-question timer</strong>. When it expires, the exam auto-advances to
+                            the next question.</li>
+                        <li>If the last question's timer expires, the exam is <strong>auto-submitted</strong>.</li>
+                        <li>You can navigate between questions using <strong>Previous</strong> and <strong>Next</strong>
+                            buttons.</li>
+                        <li>You can click question numbers in the sidebar to <strong>jump directly</strong> to any
+                            question.</li>
+                        <li>When the <strong>total exam timer</strong> reaches zero, the exam is auto-submitted.</li>
+                        <li><strong>Answered questions</strong> are shown in green in the sidebar.</li>
+                        <li>⚠️ <strong>You can only take this exam ONCE.</strong> There is no retake.</li>
+                    </ul>
+                </div>
+            </div>
+            <div class="instructions-footer">
+                <p class="ready-text">Are you ready to begin?</p>
+                <button class="start-exam-btn" id="startExamBtn" onclick="startExam()">🚀 Start Exam</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Already Taken Message -->
+    <div id="alreadyTakenOverlay" style="display:none;">
+        <div style="display:flex;justify-content:center;align-items:center;min-height:100vh;background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);">
+            <div style="background:#fff;border-radius:15px;padding:40px;max-width:500px;text-align:center;box-shadow:0 10px 40px rgba(0,0,0,0.2);">
+                <div style="font-size:60px;margin-bottom:20px;">🔒</div>
+                <h1 style="color:#e53935;margin-bottom:15px;font-size:24px;">Exam Already Completed</h1>
+                <p style="color:#666;font-size:16px;margin-bottom:25px;">You have already taken this exam. Each exam can only be attempted once.</p>
+                <div style="display:flex;gap:15px;justify-content:center;">
+                    <a href="dashboard" style="padding:12px 25px;background:#667eea;color:#fff;text-decoration:none;border-radius:8px;font-weight:600;">🏠 Back to Dashboard</a>
+                    <a id="viewResultsLink" href="exam-results.html?skillId=3" style="padding:12px 25px;background:#4caf50;color:#fff;text-decoration:none;border-radius:8px;font-weight:600;">📊 View Results</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="exam-container" id="examContainer" style="display:none;">
+        <!-- Header -->
+        <div class="exam-header">
+            <div class="header-left">
+                <h1>Online Examination</h1>
+                <p>Candidate: <strong id="candidateName"></strong></p>
+            </div>
+            <div class="header-right">
+                <div class="timer-box">
+                    <h3>Total Time</h3>
+                    <div class="timer" id="timer">--:--</div>
+                    <p id="timerWarning"></p>
+                </div>
+                <div class="timer-box" style="margin-left: 20px;">
+                    <h3>Question Time</h3>
+                    <div class="timer" id="qTimer" style="color: #cb4154;">--:--</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="exam-wrapper">
+            <!-- Sidebar with Question Numbers -->
+            <div class="sidebar">
+                <h3>Questions</h3>
+                <div class="question-nav" id="questionNav"></div>
+                <button class="submit-btn" onclick="submitExam()">Submit Exam</button>
+            </div>
+
+            <!-- Main Content Area -->
+            <div class="main-content">
+                <div class="question-container">
+                    <div id="questionDisplay">
+                        <p class="loading">Loading question...</p>
+                    </div>
+
+                    <div class="navigation-buttons">
+                        <button class="nav-btn" onclick="previousQuestion()" id="prevBtn">← Previous</button>
+                        <button class="nav-btn" onclick="nextQuestion()" id="nextBtn">Next →</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Exam state
+        let questions = [];
+        let examSessionId = 'exam_' + Date.now();
+        let currentQuestion = 1;
+        let answers = {};
+        let timerInterval = null;
+        let questionTimerInterval = null;
+
+        // Config — will be loaded from server
+        let examDurationSeconds = 5 * 60;
+        let QUESTION_TIME_LIMIT = 10;
+        let NUM_QUESTIONS = 30;
+        let candidateFullName = 'Exam Candidate';
+
+        // Load config from server, then show instructions
+        async function loadExamConfig() {
+            try {
+                const response = await fetch('api/exam-config');
+                if (!response.ok) {
+                    if (response.status === 401) {
+                        window.location.href = 'login';
+                        return;
+                    }
+                    throw new Error('Failed to fetch exam config');
+                }
+                const config = await response.json();
+                NUM_QUESTIONS = config.numQuestions || 30;
+                examDurationSeconds = (config.totalTimeMinutes || 5) * 60;
+                QUESTION_TIME_LIMIT = config.questionTimeSeconds || 10;
+                candidateFullName = config.candidateName || 'Exam Candidate';
+            } catch (error) {
+                console.warn('Could not fetch exam config, using defaults:', error);
+            }
+
+            // Update instructions UI
+            document.getElementById('instrCandidateName').textContent = candidateFullName;
+            document.getElementById('instrNumQuestions').textContent = NUM_QUESTIONS;
+            document.getElementById('instrTotalTime').textContent = Math.floor(examDurationSeconds / 60) + ' Minutes';
+            document.getElementById('instrQuestionTime').textContent = QUESTION_TIME_LIMIT + ' Seconds';
+            document.getElementById('candidateName').textContent = candidateFullName;
+        }
+
+        function startExam() {
+            document.getElementById('instructionsOverlay').style.display = 'none';
+            document.getElementById('examContainer').style.display = 'flex';
+
+            const urlParams = new URLSearchParams(window.location.search);
+            const skillId = urlParams.get('skillId') || 3;
+            fetchQuestions(skillId);
+        }
+
+        async function fetchQuestions(skillId) {
+            try {
+                const response = await fetch(`api/questions?skillId=${skillId}`);
+                if (!response.ok) {
+                    if (response.status === 401) {
+                        window.location.href = 'login';
+                        return;
+                    }
+                    let errorDetail = 'Failed to fetch questions';
+                    try {
+                        const errData = await response.json();
+                        if (errData.error) errorDetail = errData.error;
+                    } catch (e) { /* ignore parse error */ }
+                    throw new Error(errorDetail);
+                }
+                const data = await response.json();
+
+                // Check if exam was already taken
+                if (data.alreadyTaken) {
+                    document.getElementById('examContainer').style.display = 'none';
+                    document.getElementById('instructionsOverlay').style.display = 'none';
+                    document.getElementById('alreadyTakenOverlay').style.display = 'block';
+                    document.getElementById('viewResultsLink').href = 'exam-results.html?skillId=' + skillId;
+                    return;
+                }
+
+                questions = data;
+
+                if (questions.length === 0) {
+                    document.getElementById('questionDisplay').innerHTML =
+                        "<p>No questions found for this skill module. Please contact your instructor.</p>";
+                    return;
+                }
+
+                initializeExam();
+            } catch (error) {
+                console.error('Exam loading error:', error);
+                document.getElementById('questionDisplay').innerHTML =
+                    `<div class="error-box">
+                        <h3>⚠️ Error Loading Exam</h3>
+                        <p>${error.message}</p>
+                        <p style="margin-top:10px;font-size:13px;color:#999;">
+                            Please check:<br>
+                            • Database connection is active<br>
+                            • Questions table exists and has data<br>
+                            • Check server logs for details
+                        </p>
+                        <button onclick="location.reload()" style="margin-top:15px;padding:8px 20px;cursor:pointer;border:1px solid #ccc;border-radius:4px;background:#f5f5f5;">
+                            🔄 Retry
+                        </button>
+                    </div>`;
+            }
+        }
+
+        function initializeExam() {
+            // set timer display
+            const mins = Math.floor(examDurationSeconds / 60);
+            const secs = examDurationSeconds % 60;
+            document.getElementById('timer').textContent =
+                String(mins).padStart(2, '0') + ':' + String(secs).padStart(2, '0');
+            document.getElementById('qTimer').textContent =
+                '00:' + String(QUESTION_TIME_LIMIT).padStart(2, '0');
+
+            const questionNav = document.getElementById('questionNav');
+            questions.forEach(q => {
+                const btn = document.createElement('button');
+                btn.className = 'question-btn';
+                btn.id = 'q-' + q.number;
+                btn.textContent = q.number;
+                btn.onclick = function (e) {
+                    e.preventDefault();
+                    loadQuestion(q.number);
+                };
+                questionNav.appendChild(btn);
+            });
+            loadQuestion(1);
+            startTimer();
+        }
+
+        function loadQuestion(questionNumber) {
+            currentQuestion = questionNumber;
+
+            // Update active button
+            document.querySelectorAll('.question-btn').forEach(btn => {
+                btn.classList.remove('active');
+                if (btn.id === 'q-' + questionNumber) {
+                    btn.classList.add('active');
+                }
+            });
+
+            // Update button states
+            document.getElementById('prevBtn').disabled = (questionNumber === 1);
+            document.getElementById('nextBtn').disabled = (questionNumber === questions.length);
+
+            const question = questions[questionNumber - 1];
+            displayQuestion(question);
+
+            // Start the per-question timer
+            startQuestionTimer();
+        }
+
+        function displayQuestion(question) {
+            const selectedAnswer = answers['q' + question.number] || '';
+
+            let html = `
+                <div class="question-header">
+                    <h2>Question <span id="currentQuestionNumber">${question.number}</span> of ${questions.length}</h2>
+                </div>
+
+                <div class="question-text">
+                    <p>${question.text}</p>
+                </div>
+
+                <div class="options">
+            `;
+
+            Object.keys(question.options).forEach(option => {
+                html += `
+                    <div class="option">
+                        <input type="radio" id="option${option}" name="answer" value="${option}"
+                               ${selectedAnswer === option ? 'checked' : ''}
+                               onchange="selectAnswer('${question.id}', '${question.number}', '${option}')">
+                        <label for="option${option}">${option}) ${question.options[option]}</label>
+                    </div>
+                `;
+            });
+
+            html += `
+                </div>
+            `;
+
+            document.getElementById('questionDisplay').innerHTML = html;
+        }
+
+        function selectAnswer(questionId, questionNumber, option) {
+            answers['q' + questionNumber] = option;
+
+            // Mark question as answered
+            const btn = document.getElementById('q-' + questionNumber);
+            if (btn && !btn.classList.contains('answered')) {
+                btn.classList.add('answered');
+            }
+        }
+
+        function previousQuestion() {
+            if (currentQuestion > 1) {
+                loadQuestion(currentQuestion - 1);
+            }
+        }
+
+        function nextQuestion() {
+            if (currentQuestion < questions.length) {
+                loadQuestion(currentQuestion + 1);
+            }
+        }
+
+        function startTimer() {
+            let secondsRemaining = examDurationSeconds;
+
+            timerInterval = setInterval(function () {
+                secondsRemaining--;
+
+                const minutes = Math.floor(secondsRemaining / 60);
+                const seconds = secondsRemaining % 60;
+
+                document.getElementById('timer').textContent =
+                    String(minutes).padStart(2, '0') + ':' + String(seconds).padStart(2, '0');
+
+                // 1 minute remaining
+                if (secondsRemaining === 60) {
+                    document.getElementById('timerWarning').textContent = '⚠️ 1 minute remaining!';
+                    document.getElementById('timerWarning').style.color = '#cb4154';
+                }
+
+                // Time's up
+                if (secondsRemaining <= 0) {
+                    clearInterval(timerInterval);
+                    clearInterval(questionTimerInterval);
+                    alert('Total Time is up! Your exam will be automatically submitted.');
+                    forceSubmitExam();
+                }
+            }, 1000);
+        }
+
+        function startQuestionTimer() {
+            if (questionTimerInterval) {
+                clearInterval(questionTimerInterval);
+            }
+
+            let qSeconds = QUESTION_TIME_LIMIT;
+            document.getElementById('qTimer').textContent = '00:' + String(qSeconds).padStart(2, '0');
+
+            questionTimerInterval = setInterval(function () {
+                qSeconds--;
+                document.getElementById('qTimer').textContent = '00:' + String(qSeconds).padStart(2, '0');
+
+                if (qSeconds <= 0) {
+                    clearInterval(questionTimerInterval);
+                    // Time up for this question, move to next or submit
+                    if (currentQuestion < questions.length) {
+                        nextQuestion();
+                    } else {
+                        // Last question timed out
+                        alert('Question time is up and exam is finished! Auto-submitting...');
+                        forceSubmitExam();
+                    }
+                }
+            }, 1000);
+        }
+
+        async function forceSubmitExam() {
+            // Skips the confirm dialog for auto-submission
+            clearInterval(timerInterval);
+            if (questionTimerInterval) clearInterval(questionTimerInterval);
+            document.getElementById('timer').textContent = 'Submitting...';
+            document.getElementById('qTimer').textContent = '--:--';
+
+            await processSubmit();
+        }
+
+        async function submitExam() {
+            if (!confirm('Are you sure you want to submit your exam? You cannot change answers after submission.')) {
+                return;
+            }
+
+            clearInterval(timerInterval);
+            if (questionTimerInterval) clearInterval(questionTimerInterval);
+            document.getElementById('timer').textContent = 'Submitting...';
+            document.getElementById('qTimer').textContent = '--:--';
+
+            await processSubmit();
+        }
+
+        async function processSubmit() {
+            console.log('[Submit] questions loaded:', questions.length,
+                'answers given:', Object.keys(answers).length);
+
+            const urlParams = new URLSearchParams(window.location.search);
+            const skillId = urlParams.get('skillId') || 3;
+
+            // Build answers array with question details (no correct answer sent)
+            const answersArray = [];
+            for (let i = 0; i < questions.length; i++) {
+                const q = questions[i];
+                answersArray.push({
+                    questionId: q.id,
+                    selected: answers['q' + q.number] || ''
+                });
+            }
+
+            const payload = {
+                skillId: parseInt(skillId),
+                score: 0, // Server calculates the actual score
+                total: questions.length,
+                answers: answersArray
+            };
+
+            console.log('[Submit] Payload:', JSON.stringify(payload).length, 'bytes,',
+                answersArray.length, 'answers');
+
+            try {
+                const response = await fetch('api/submit-exam', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(payload)
+                });
+
+                if (response.ok) {
+                    const result = await response.json();
+                    console.log('[Submit] Success:', result);
+                    window.location.href = 'exam-results.html?skillId=' + skillId;
+                } else if (response.status === 409) {
+                    // Already taken
+                    alert('This exam has already been submitted. Redirecting to results...');
+                    window.location.href = 'exam-results.html?skillId=' + skillId;
+                } else {
+                    const errText = await response.text();
+                    console.error('[Submit] Server error:', response.status, errText);
+                    alert("Error submitting exam: " + errText);
+                    document.getElementById('timer').textContent = 'Failed';
+                }
+            } catch (error) {
+                console.error("[Submit] Network error:", error);
+                alert("Network error submitting exam: " + error.message);
+            }
+        }
+
+        window.addEventListener('load', loadExamConfig);
+    </script>
+</body>
+
+</html>

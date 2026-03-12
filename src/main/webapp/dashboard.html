@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - Skill Gap Analysis</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+    <div class="navbar">
+        <div class="container">
+            <h2>Skill Gap Analysis System</h2>
+            <div class="nav-right">
+                <span>Welcome, <strong id="userFullName"></strong></span>
+                <button onclick="logout()" class="btn-logout">Logout</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="container dashboard-container">
+        <h1>Student Dashboard</h1>
+        <div class="dashboard-info">
+            <p><strong>Name:</strong> <span id="fullName"></span></p>
+            <p><strong>Department:</strong> CSE</p>
+            <p><strong>Exam Pattern:</strong> Full Stack Development Assessment</p>
+        </div>
+
+        <div id="skillCards"></div>
+    </div>
+
+    <script>
+        let dashboardData = null;
+
+        // Load user data
+        fetch('dashboard?type=json')
+            .then(response => {
+                if (!response.ok) {
+                    if (response.status === 401) { window.location.href = 'login'; return; }
+                    throw new Error('Failed to load dashboard');
+                }
+                return response.json();
+            })
+            .then(data => {
+                dashboardData = data;
+                document.getElementById('userFullName').textContent = data.fullName;
+                document.getElementById('fullName').textContent = data.fullName;
+                renderSkillCards(data);
+            })
+            .catch(error => console.error('Error loading dashboard data:', error));
+
+        function renderSkillCards(data) {
+            const container = document.getElementById('skillCards');
+            let html = '';
+
+            data.skillGaps.forEach(skill => {
+                const examTaken = skill.examTaken;
+                const pct = skill.totalQuestions > 0 ? Math.round((skill.score * 100) / skill.totalQuestions) : 0;
+
+                html += `<div class="skill-card" style="background:#fff;border-radius:10px;padding:20px;margin:15px 0;box-shadow:0 2px 10px rgba(0,0,0,0.1);">`;
+                html += `<h3 style="color:#667eea;margin-bottom:10px;">${skill.skillName}</h3>`;
+                html += `<p style="color:#666;font-size:14px;margin-bottom:15px;">${skill.description || ''}</p>`;
+
+                if (examTaken) {
+                    // Exam already taken — show score and View Results button
+                    html += `<div style="background:#f0f9f0;border-left:4px solid #4caf50;padding:12px;border-radius:5px;margin-bottom:15px;">`;
+                    html += `<p style="color:#2e7d32;font-weight:600;margin-bottom:5px;">✅ Exam Completed</p>`;
+                    html += `<p style="color:#333;">Score: <strong>${skill.score} / ${skill.totalQuestions}</strong> (${pct}%)</p>`;
+                    html += `</div>`;
+                    html += `<a href="exam-results.html?skillId=${skill.skillId}" class="btn-primary" style="display:inline-block;padding:10px 25px;text-decoration:none;border-radius:5px;font-weight:600;margin-bottom: 15px; margin-right: 10px;">📊 View Results</a>`;
+                } else {
+                    // Exam not taken — show Start Assessment button
+                    html += `<div style="background:#fff3e0;border-left:4px solid #ff9800;padding:12px;border-radius:5px;margin-bottom:15px;">`;
+                    html += `<p style="color:#e65100;font-weight:600;">⏳ Exam Not Taken Yet</p>`;
+                    html += `<p style="color:#666;font-size:13px;">You can only attempt this exam once.</p>`;
+                    html += `</div>`;
+                    html += `<button onclick="startExam(${skill.skillId})" class="btn-primary" style="padding:10px 25px;border-radius:5px;font-weight:600;cursor:pointer;margin-bottom: 15px;">🚀 Start Assessment</button>`;
+                }
+
+                // Add Resources section
+                if (skill.resources && skill.resources.length > 0) {
+                    html += `<div style="margin-top:20px;padding-top:15px;border-top:1px solid #eee;">`;
+                    html += `<h4 style="color:#333;margin-bottom:10px;">📚 Recommended Resources</h4>`;
+                    html += `<ul style="list-style-type:none;padding:0;">`;
+                    skill.resources.forEach(res => {
+                        html += `<li style="margin-bottom:8px; display:flex; align-items:center;">`;
+                        html += `🔗 <a href="${res.url}" target="_blank" style="color:#4a90e2;text-decoration:none;font-weight:500;margin-left:5px;">${res.title}</a>`;
+                        html += `<span style="font-size:12px;color:#666;margin-left:10px;background:#f5f5f5;padding:2px 8px;border-radius:10px; border:1px solid #ddd;">${res.type}</span>`;
+                        html += `</li>`;
+                    });
+                    html += `</ul>`;
+                    html += `</div>`;
+                }
+
+                html += `</div>`;
+            });
+
+            container.innerHTML = html;
+        }
+
+        function logout() {
+            fetch('logout', { method: 'POST' })
+                .then(() => window.location.href = 'login');
+        }
+
+        function startExam(skillId) {
+            if (confirm('⚠️ Important: You can only take this exam ONCE. Are you sure you want to start?')) {
+                window.location.href = 'exam.html?skillId=' + skillId;
+            }
+        }
+    </script>
+</body>
+
+</html>
